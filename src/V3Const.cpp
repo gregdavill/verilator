@@ -2767,54 +2767,17 @@ class ConstVisitor final : public VNVisitor {
                     did = true;
                 } else if (m_selp && VN_IS(valuep, InitArray)) {
                     const AstArraySel* selp = m_selp;
-                    // while(const AstArraySel* p = VN_CAST(selp->abovep(), ArraySel)){
-                    //     UINFO(2," above: " << p <<  endl);
-                    //     selp = p;
-                    // }
-
-                    selp->dumpTree("  selp ");
-                    nodep->varp()->valuep()->dumpTree("-  nodep: ");
-
+                    
                     AstNode* arrinitp = nodep->varp()->valuep();
-                    arrinitp->op2p();
-
                     // selp contains top level arraysel. Multilpe may exist per dimension
                     for (;selp ; selp = VN_CAST(selp->abovep(), ArraySel)){
-                        UINFO(2,"  loop: " << selp <<  endl);
-                        
-                        UINFO(2,"  bitp: " << selp->bitp() <<  endl);
-
-                        // array int
-
                         const uint32_t bit = selp->bitConst();
-                        UINFO(2,"   bit: " << bit <<  endl);
-
                         AstInitArray* initarp = VN_AS(arrinitp, InitArray);
-                        UINFO(2,"    initarp: " << initarp <<  endl);
-
                         arrinitp = initarp->getIndexDefaultedValuep(bit);
-
-                        // for(int c = 0; c < selp->bitConst(); c++)
-                        //     arrinitp = arrinitp->nextp();
-                        
-                        UINFO(2,"  arrinitp: " << arrinitp <<  endl);
-                        UINFO(2,"  arrinitp.1: " << arrinitp->op1p() <<  endl);
-                        UINFO(2,"  arrinitp.2: " << arrinitp->op2p() <<  endl);
-                        UINFO(2,"  arrinitp.next: " << arrinitp->nextp() <<  endl);
-
-                        // if(selp->op1p())
-                        //     arrinitp = arrinitp->op2p();
                     }
-
-
-
-                    
 
                     // const uint32_t bit = m_selp->bitConst();
                     AstNode* const itemp = arrinitp;
-
-                    
-                    
 
                     if (VN_IS(itemp, Const)) {
                         const V3Number& num = VN_AS(itemp, Const)->num();
