@@ -2702,6 +2702,9 @@ class ConstVisitor final : public VNVisitor {
     }
 
     void visit(AstArraySel* nodep) override {
+
+        UINFO(2," arraySel "<<endl);
+
         iterateAndNextNull(nodep->bitp());
         if (VN_IS(nodep->bitp(), Const)
             && VN_IS(nodep->fromp(), VarRef)
@@ -2712,6 +2715,13 @@ class ConstVisitor final : public VNVisitor {
         }
         iterateAndNextNull(nodep->fromp());
         if (VN_IS(nodep->fromp(), Const)) {  // It did.
+
+            //UINFO(2," arraySel_complete "<<endl);
+            //nodep->dumpTree(" ArraySel ");
+
+            UINFO(2," nodep "<< nodep << endl);
+            UINFO(2," nodep.abovep "<< nodep->abovep() << endl);
+            bool clear = VN_IS(nodep->abovep(), ArraySel);
             if (!m_selp) {
                 nodep->v3error("Illegal assignment of constant to unpacked array");
             } else {
@@ -2723,6 +2733,9 @@ class ConstVisitor final : public VNVisitor {
                         VN_AS(fromp->dtypep()->skipRefp(), NodeArrayDType)->subDTypep());
                 }
                 VL_DO_DANGLING(pushDeletep(nodep), nodep);
+
+                if(clear)
+                    return;
             }
         }
         m_selp = nullptr;
@@ -2736,7 +2749,6 @@ class ConstVisitor final : public VNVisitor {
         UASSERT_OBJ(nodep->varp(), nodep, "Not linked");
         bool did = false;
         if (m_doV && nodep->varp()->valuep() && !m_attrp) {
-            // if (debug()) valuep->dumpTree("-  visitvaref: ");
             iterateAndNextNull(nodep->varp()->valuep());  // May change nodep->varp()->valuep()
             AstNode* const valuep = nodep->varp()->valuep();
             if (nodep->access().isReadOnly()
@@ -2750,20 +2762,68 @@ class ConstVisitor final : public VNVisitor {
                     || nodep->varp()->isParam())) {
                 if (operandConst(valuep)) {
                     const V3Number& num = VN_AS(valuep, Const)->num();
-                    // UINFO(2,"constVisit "<<cvtToHex(valuep)<<" "<<num<<endl);
+                    UINFO(2,"constVisit "<<cvtToHex(valuep)<<" "<<num<<endl);
                     VL_DO_DANGLING(replaceNum(nodep, num), nodep);
                     did = true;
                 } else if (m_selp && VN_IS(valuep, InitArray)) {
-                    AstInitArray* const initarp = VN_AS(valuep, InitArray);
-                    const uint32_t bit = m_selp->bitConst();
-                    AstNode* const itemp = initarp->getIndexDefaultedValuep(bit);
+                    const AstArraySel* selp = m_selp;
+                    while(const AstArraySel* p = VN_CAST(selp->abovep(), ArraySel)){
+                        UINFO(2," above: " << p <<  endl);
+                        selp = p;
+                    }
+
+                    selp->dumpTree("  selp ");
+                    nodep->varp()->valuep()->dumpTree("-  nodep: ");
+
+                    AstNode* arrinitp = nodep->varp()->valuep();
+                    arrinitp->op2p();
+
+                    // selp contains top level arraysel. Multilpe may exist per dimension
+                    for (;selp ; selp = VN_CAST(selp->op1p(), ArraySel)){
+                        UINFO(2,"  loop: " << selp <<  endl);
+                        
+                        UINFO(2,"  bitp: " << selp->bitp() <<  endl);
+
+                        // array int
+
+                        const uint32_t bit = selp->bitConst();
+                        UINFO(2,"   bit: " << bit <<  endl);
+
+                        AstInitArray* initarp = VN_AS(arrinitp, InitArray);
+                        UINFO(2,"    initarp: " << initarp <<  endl);
+
+                        arrinitp = initarp->getIndexDefaultedValuep(bit);
+
+                        // for(int c = 0; c < selp->bitConst(); c++)
+                        //     arrinitp = arrinitp->nextp();
+                        
+                        UINFO(2,"  arrinitp: " << arrinitp <<  endl);
+                        UINFO(2,"  arrinitp.1: " << arrinitp->op1p() <<  endl);
+                        UINFO(2,"  arrinitp.2: " << arrinitp->op2p() <<  endl);
+                        UINFO(2,"  arrinitp.next: " << arrinitp->nextp() <<  endl);
+
+                        // if(selp->op1p())
+                        //     arrinitp = arrinitp->op2p();
+                    }
+
+
+
+                    
+
+                    // const uint32_t bit = m_selp->bitConst();
+                    AstNode* const itemp = arrinitp;
+
+                    
+                    
+
                     if (VN_IS(itemp, Const)) {
                         const V3Number& num = VN_AS(itemp, Const)->num();
-                        // UINFO(2,"constVisit "<<cvtToHex(valuep)<<" "<<num<<endl);
+                        UINFO(2,"constVisit "<<cvtToHex(valuep)<<" "<<num<<endl);
                         VL_DO_DANGLING(replaceNum(nodep, num), nodep);
                         did = true;
                     }
                 } else if (m_params && VN_IS(valuep, InitArray)) {
+                    UINFO(2," m_params " << endl);
                     // Allow parameters to pass arrays
                     // Earlier recursion of InitArray made sure each array value is constant
                     // This exception is fairly fragile, i.e. doesn't
