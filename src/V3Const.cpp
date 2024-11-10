@@ -2767,10 +2767,10 @@ class ConstVisitor final : public VNVisitor {
                     did = true;
                 } else if (m_selp && VN_IS(valuep, InitArray)) {
                     const AstArraySel* selp = m_selp;
-                    while(const AstArraySel* p = VN_CAST(selp->abovep(), ArraySel)){
-                        UINFO(2," above: " << p <<  endl);
-                        selp = p;
-                    }
+                    // while(const AstArraySel* p = VN_CAST(selp->abovep(), ArraySel)){
+                    //     UINFO(2," above: " << p <<  endl);
+                    //     selp = p;
+                    // }
 
                     selp->dumpTree("  selp ");
                     nodep->varp()->valuep()->dumpTree("-  nodep: ");
@@ -2779,7 +2779,7 @@ class ConstVisitor final : public VNVisitor {
                     arrinitp->op2p();
 
                     // selp contains top level arraysel. Multilpe may exist per dimension
-                    for (;selp ; selp = VN_CAST(selp->op1p(), ArraySel)){
+                    for (;selp ; selp = VN_CAST(selp->abovep(), ArraySel)){
                         UINFO(2,"  loop: " << selp <<  endl);
                         
                         UINFO(2,"  bitp: " << selp->bitp() <<  endl);
