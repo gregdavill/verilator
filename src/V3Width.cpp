@@ -4284,6 +4284,7 @@ class WidthVisitor final : public VNVisitor {
             // widths need to be individually determined
             for (AstPatMember* patp = VN_AS(nodep->itemsp(), PatMember); patp;
                  patp = VN_AS(patp->nextp(), PatMember)) {
+            UINFO(9, " replication count " << nodep << endl);
                 const int times = visitPatMemberRep(patp);
                 for (int i = 1; i < times; i++) {
                     AstPatMember* const newp = patp->cloneTree(false);
@@ -4305,6 +4306,7 @@ class WidthVisitor final : public VNVisitor {
                         if (patp->keyp()) newkeyp = patp->keyp()->cloneTree(true);
                         AstPatMember* const newp
                             = new AstPatMember{patp->fileline(), movep, newkeyp, nullptr};
+                        UINFO(9, " split to multiple, new " << newp << endl);
                         patp->addNext(newp);
                     }
                     relinkHandle.relink(patp);
@@ -4324,22 +4326,29 @@ class WidthVisitor final : public VNVisitor {
                 dtypep = vdtypep->subDTypep()->skipRefp();
             }
 
+            UINFO(9, " userIterate " << nodep << endl);
             userIterate(dtypep, WidthVP{SELF, BOTH}.p());
 
             if (auto* const vdtypep = VN_CAST(dtypep, NodeUOrStructDType)) {
+            UINFO(9, " patternUOrStruct " << nodep << endl);
                 VL_DO_DANGLING(patternUOrStruct(nodep, vdtypep, defaultp), nodep);
             } else if (auto* const vdtypep = VN_CAST(dtypep, NodeArrayDType)) {
+            UINFO(9, " patternArray " << nodep << endl);
                 VL_DO_DANGLING(patternArray(nodep, vdtypep, defaultp), nodep);
             } else if (auto* const vdtypep = VN_CAST(dtypep, AssocArrayDType)) {
+            UINFO(9, " patternAssoc " << nodep << endl);
                 VL_DO_DANGLING(patternAssoc(nodep, vdtypep, defaultp), nodep);
             } else if (auto* const vdtypep = VN_CAST(dtypep, WildcardArrayDType)) {
+            UINFO(9, " patternWildcard " << nodep << endl);
                 VL_DO_DANGLING(patternWildcard(nodep, vdtypep, defaultp), nodep);
             } else if (auto* const vdtypep = VN_CAST(dtypep, DynArrayDType)) {
                 VL_DO_DANGLING(patternDynArray(nodep, vdtypep, defaultp), nodep);
             } else if (auto* const vdtypep = VN_CAST(dtypep, QueueDType)) {
                 VL_DO_DANGLING(patternQueue(nodep, vdtypep, defaultp), nodep);
             } else if (VN_IS(dtypep, BasicDType) && VN_AS(dtypep, BasicDType)->isRanged()) {
+            UINFO(9, " patternBasic " << nodep << endl);
                 VL_DO_DANGLING(patternBasic(nodep, dtypep, defaultp), nodep);
+
             } else {
                 nodep->v3warn(
                     E_UNSUPPORTED,
@@ -4526,8 +4535,10 @@ class WidthVisitor final : public VNVisitor {
     void patternArray(AstPattern* nodep, AstNodeArrayDType* arrayDtp, AstPatMember* defaultp) {
         const VNumRange range = arrayDtp->declRange();
         PatVecMap patmap = patVectorMap(nodep, range);
-        UINFO(9, "ent " << range.left() << " to " << range.right() << endl);
+        UINFO(9, "ent " << range.left() << " to " << range.right() << " inc=" << range.leftToRightInc() << "elem" << range.elements() << endl);
         AstNode* newp = nullptr;
+        int ins_ent = range.lo();
+
         bool allConstant = true;
         for (int entn = 0, ent = range.left(); entn < range.elements();
              ++entn, ent += range.leftToRightInc()) {
@@ -4536,6 +4547,7 @@ class WidthVisitor final : public VNVisitor {
             const auto it = patmap.find(ent);
             if (it == patmap.end()) {
                 if (defaultp) {
+                    UINFO(9, " dafaultp " << entn << endl);
                     newpatp = defaultp->cloneTree(false);
                     patp = newpatp;
                 } else if (!(VN_IS(arrayDtp, UnpackArrayDType) && !allConstant)) {
@@ -4546,6 +4558,7 @@ class WidthVisitor final : public VNVisitor {
                 }
             } else {
                 patp = it->second;
+                UINFO(9, " patp " << patp << endl);
                 patmap.erase(it);
             }
 
@@ -4553,21 +4566,57 @@ class WidthVisitor final : public VNVisitor {
                 // Don't want the RHS an array
                 patp->dtypep(arrayDtp->subDTypep());
                 allConstant &= VN_IS(patp->lhssp(), Const);
+                UINFO(9, " allConstant " << allConstant << endl);
                 AstNodeExpr* const valuep = patternMemberValueIterate(patp);
                 if (VN_IS(arrayDtp, UnpackArrayDType)) {
+                    UINFO(9, " VN_IS(arrayDtp, UnpackArrayDType. newp= " << newp << endl);
+
                     if (!newp) {
                         AstInitArray* const newap
                             = new AstInitArray{nodep->fileline(), arrayDtp, nullptr};
                         newp = newap;
                     }
-                    VN_AS(newp, InitArray)->addIndexValuep(ent - range.lo(), valuep);
+                    UINFO(9, " valluep " << valuep << endl);
+                    UINFO(9, " addIndexValuep(ent=" << ent << " - range.lo()=" << range.lo()<< ", valuep);" << endl);
+                    
+                    if(VN_IS(valuep, VarRef)){
+                        const AstVarRef* varrefp = VN_AS(valuep, VarRef);
+                        if(varrefp->varp()){
+                            if(const AstInitArray* arrayInitp = VN_AS(varrefp->varp()->valuep(), InitArray))
+                            {
+                                UINFO(9, " arrayInitp " << arrayInitp << endl);
+                                arrayInitp->dumpTree(" arrayInit: ");
+
+                                for(const AstNode* initp = arrayInitp->initsp(); initp ; initp = initp->nextp()){
+                                    
+                                    const AstInitItem* inititemp = VN_AS(initp, InitItem);
+
+                                    UINFO(9, " initp " << inititemp << endl);
+                                    UINFO(9, " initp->vlauep " << inititemp->valuep() << endl);
+                                    
+
+                                    VN_AS(newp, InitArray)->addIndexValuep(ins_ent - range.lo(), inititemp->valuep()->cloneTree(false));
+                                    ins_ent++;
+                                }
+                            }
+
+                        }
+
+                    }else{
+
+                        VN_AS(newp, InitArray)->addIndexValuep(ent - range.lo(), valuep);
+                    }
                 } else {  // Packed. Convert to concat for now.
+                    UINFO(9, " Packed " << valuep << endl);
+                
                     if (!newp) {
                         newp = valuep;
                     } else {
+                
                         AstConcat* const concatp
                             = new AstConcat{patp->fileline(), VN_AS(newp, NodeExpr), valuep};
                         newp = concatp;
+                        UINFO(9, " newp == concat " << newp << endl);
                         newp->dtypeSetLogicSized(concatp->lhsp()->width()
                                                      + concatp->rhsp()->width(),
                                                  nodep->dtypep()->numeric());
@@ -4576,13 +4625,24 @@ class WidthVisitor final : public VNVisitor {
             }
             if (newpatp) VL_DO_DANGLING(pushDeletep(newpatp), newpatp);
         }
+
+//        UINFO(9, " patmap " << patmap << endl);
+        //UINFO(9, " patmap.size() " << patmap.size() << endl);
+        //UINFO(9, " patmap " << patmap << endl);
+
+        
+        for(auto it = patmap.begin(); it != patmap.end(); it++){
+            UINFO(9, "patmap " << it->second << endl);
+        }
+
+
         if (!patmap.empty()) nodep->v3error("Assignment pattern with too many elements");
         if (newp) {
             nodep->replaceWith(newp);
         } else {
             nodep->v3error("Assignment pattern with no members");
         }
-        // if (debug() >= 9) newp->dumpTree("-  apat-out: ");
+        if (debug() >= 9) newp->dumpTree("-  apat-out: ");
         VL_DO_DANGLING(pushDeletep(nodep), nodep);  // Deletes defaultp also, if present
     }
     void patternAssoc(AstPattern* nodep, AstAssocArrayDType* arrayDtp, AstPatMember* defaultp) {
